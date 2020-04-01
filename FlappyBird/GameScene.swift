@@ -10,8 +10,6 @@ import UIKit
 import SpriteKit
 
 class GameScene: SKScene, SKPhysicsContactDelegate {
-    
-    
     // それぞれのシーン上の画面を構成する要素をノード (SKNodeクラス) と呼ぶ
     // SKNodeクラスを継承したクラスが実際のUI部品
     // 画像を描画するSKSpriteNodeクラス、文字を描画するSKLabelNodeクラス、図形を描画するSKShapeNodeクラス
@@ -26,14 +24,19 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
     let groundCategory: UInt32 = 1 << 1 // 0...00010
     let wallCategory: UInt32 = 1 << 2 // 0...00100
     let scoreCategory: UInt32 = 1 << 3 // 0...01000
+    let itemCategory: UInt32 = 1 << 4 // 0...10000
     
     // スコア用
     var score = 0
+    
+    // アイテムスコア用
+    var itemScore = 0
     
     // 画面上部にスコアとベストスコアを表示するようにする
     // 文字の表示にはSKLabelNodeクラス
     var scoreLabelNode:SKLabelNode!
     var bestScoreLabelNode:SKLabelNode!
+    var itemScoreLabelNode:SKLabelNode!
     // ベストスコアをUserDefaultsで保存するために、userDefaultsクラスのUserDefaults.standardプロパティでUserDefaultsを取得します。
     let userDefaults:UserDefaults = UserDefaults.standard
     
@@ -57,7 +60,7 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         
         // 虫のノード
         bugNode = SKNode()
-        addChild(bugNode)
+        scrollNode.addChild(bugNode)
         
         
         // 各種スプライトを生成する処理をメソッドに分割
@@ -71,6 +74,8 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
     }
     
     func setupScoreLabel() {
+        
+        // スコア
         score = 0
         scoreLabelNode = SKLabelNode()
         scoreLabelNode.fontColor = UIColor.black
@@ -80,9 +85,20 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         scoreLabelNode.text = "Score:\(score)"
         self.addChild(scoreLabelNode)
         
+        // アイテムスコア
+        itemScore = 0
+        itemScoreLabelNode = SKLabelNode()
+        itemScoreLabelNode.fontColor = UIColor.black
+        itemScoreLabelNode.position = CGPoint(x: 10, y: self.frame.size.height - 90)
+        itemScoreLabelNode.zPosition = 100 // 一番手前に表示する
+        itemScoreLabelNode.horizontalAlignmentMode = SKLabelHorizontalAlignmentMode.left
+        itemScoreLabelNode.text = "Item Score:\(itemScore)"
+        self.addChild(itemScoreLabelNode)
+        
+        // ベストスコア
         bestScoreLabelNode = SKLabelNode()
         bestScoreLabelNode.fontColor = UIColor.black
-        bestScoreLabelNode.position = CGPoint(x: 10, y: self.frame.size.height - 90)
+        bestScoreLabelNode.position = CGPoint(x: 10, y: self.frame.size.height - 120)
         bestScoreLabelNode.zPosition = 100 // 一番手前に表示する
         bestScoreLabelNode.horizontalAlignmentMode = SKLabelHorizontalAlignmentMode.left
         
@@ -106,7 +122,7 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         
     }
     
-    // SKPhysicsContactDelegatwのメソッド 衝突した時に呼ばれるメソッド
+    // SKPhysicsContactDelegateのメソッド 衝突した時に呼ばれるメソッド
     func didBegin(_ contact: SKPhysicsContact) {
         // ゲームオーバーのときはなにもしない
         if scrollNode.speed <= 0 {
@@ -119,7 +135,7 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
             score += 1
             scoreLabelNode.text = "Score:\(score)"
             
-            // ベストスコア更新化確認する
+            // ベストスコア更新か確認する
             // UserDefaultsはキーと値を指定して保存する
             // 取り出すときはキーを指定する
             var bestScore = userDefaults.integer(forKey: "BEST")
@@ -132,27 +148,42 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
                 // 保存する
                 userDefaults.synchronize()
             }
+            
+        } else if (contact.bodyA.categoryBitMask & itemCategory) ==  itemCategory || (contact.bodyB.categoryBitMask & itemCategory) == itemCategory {
+           // アイテムスコア用の物体と衝突した
+                    print("ItemScoreUp")
+                    itemScore += 1
+            // アイテムに衝突した時には、スコアにも点数として1ポイントを追加する
+            score += 1
+            itemScoreLabelNode.text = "Item Score:\(itemScore)"
+            scoreLabelNode.text = "Score:\(score)"
+            
         } else {
             // 壁か地面と衝突した
             print("GameOver")
-            
+
             // スクロールを停止させる
             scrollNode.speed = 0
-            
+
             bird.physicsBody?.collisionBitMask = groundCategory
-            
+
             // 回転する動きが終わったら、completion（完了で）鳥の速度を0にする
             let roll = SKAction.rotate(byAngle: CGFloat(Double.pi) * CGFloat(bird.position.y) * 0.01, duration: 1)
             bird.run(roll, completion:{
                 self.bird.speed = 0
             })
         }
+        
     }
     
     func restart() {
         // スコアを0に戻す
         score = 0
+        // アイテムスコアを0に戻す
+        itemScore = 0
+        
         scoreLabelNode.text = "Score:\(score)"
+        itemScoreLabelNode.text = "Item Score:\(itemScore)"
         
         // 鳥の位置を初期位置に設定
         bird.position = CGPoint(x: self.frame.size.width * 0.2, y: self.frame.size.height * 0.7)
@@ -162,6 +193,7 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         
         // 一旦壁を全て取り除く
         wallNode.removeAllChildren()
+        bugNode.removeAllChildren()
         
         // スクロール、鳥のspeedを1に戻す
         bird.speed = 1
@@ -372,7 +404,9 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
             // 当たり判定（falseなので物体にぶつかる）
             scoreNode.physicsBody?.isDynamic = false
             
+            // categoryBitMaskプロパティで自身のカテゴリーを設定
             scoreNode.physicsBody?.categoryBitMask = self.scoreCategory
+            // 衝突することを判定する相手のカテゴリーを設定
             scoreNode.physicsBody?.contactTestBitMask = self.birdCategory
             
             wall.addChild(scoreNode)
@@ -412,12 +446,17 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         // 鳥の画像サイズを取得
         let birdSize = SKTexture(imageNamed: "bird_a").size()
         
-        // 虫が現れる位置（上下の振れ幅）を鳥のサイズの３倍とする
-        let random_y_range = birdSize.height * 3
+        // 虫が表示される位置の上下の振れ幅を鳥のサイズの15倍とする
+        let random_y_range = birdSize.height * 15
         
-        // 虫のY軸下限位置（中央位置から下方向の最大振れ幅で下の方に現れる虫を表示する位置）を計算
+        // 虫のY軸下限位置(中央位置から下方向の最大振れ幅で)を計算
+        // 地面の画像を読み込む
         let groundSize = SKTexture(imageNamed: "ground").size()
-        let center_y = groundSize.height + (self.frame.height - groundSize.height) / 2
+        //　y軸の中央を算出
+        let center_y = groundSize.height + (self.frame.size.height - groundSize.height) / 2
+        
+        // 虫のY軸下限位置
+        let bug_lowest_y = center_y - bugTexture.size().height / 2 - random_y_range / 2
         
         // 虫を生成するアクションを作成
         let createBugAnimation = SKAction.run({
@@ -431,20 +470,34 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
             
             // 0~random_y_rangeまでのランダム値を生成
             let random_y = CGFloat.random(in: 0..<random_y_range)
-            // Y軸の下限にランダムな値を足して、下の壁のY座標を決定
-            let under_bug_y = center_y + random_y
+            // Y軸の下限にランダムな値を足して、虫のY座標を決定
+            let bug_y = bug_lowest_y + random_y
             
-            // 下に表示される虫を作成
-            let underBug = SKSpriteNode(texture: bugTexture)
-            underBug.position = CGPoint(x: 0, y: under_bug_y)
-            bug.addChild(underBug)
+            // 表示される虫（スプライト）を作成
+            let bugSprite = SKSpriteNode(texture: bugTexture)
+            bugSprite.position = CGPoint(x: 0, y: bug_y)
+            
+            // 虫（スプライト）に物理演算を設定する
+            bugSprite.physicsBody = SKPhysicsBody(circleOfRadius: bugTexture.size().height / 2)
+            bugSprite.physicsBody?.isDynamic = false
+            bugSprite.physicsBody?.categoryBitMask = self.itemCategory
+            bugSprite.physicsBody?.contactTestBitMask = self.birdCategory
+            
+            bug.addChild(bugSprite)
             
             bug.run(bugAnimation)
+            
+            self.bugNode.addChild(bug)
         })
-        let waitAnimation = SKAction.wait(forDuration: 1)
+        
+        // 壁と同じタイミングで虫が作成されないようにするために、1秒間をあける
+        let waitAnimationOne = SKAction.wait(forDuration: 1)
+        
+        // 虫を作成するまで5病の待ち時間
+        let waitAnimationTwo = SKAction.wait(forDuration: 5)
         
         // 虫を作成->時間待ち->虫を作成を無限に繰り返すアクションを作成
-        let repeatForeverAnimation = SKAction.repeatForever(SKAction.sequence([createBugAnimation, waitAnimation]))
+        let repeatForeverAnimation = SKAction.repeatForever(SKAction.sequence([waitAnimationOne, createBugAnimation, waitAnimationTwo]))
         
         bugNode.run(repeatForeverAnimation)
     }

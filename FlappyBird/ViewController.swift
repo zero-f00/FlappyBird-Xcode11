@@ -8,12 +8,42 @@
 
 import UIKit
 import SpriteKit
+import AVFoundation
 
-class ViewController: UIViewController {
+class ViewController: UIViewController, AVAudioPlayerDelegate {
+    
+    var audioPlayer:AVAudioPlayer!
 
     override func viewDidLoad() {
         super.viewDidLoad()
         // Do any additional setup after loading the view.
+        
+        // 再生するaudioファイルのパスを取得
+        let audioPath = Bundle.main.path(forResource: "backgroundSound", ofType: "mp3")!
+        // 再生するURLを作成
+        let audioUrl = URL(fileURLWithPath: audioPath)
+        
+        // audioを再生するプレイヤーを作成する
+        var audioError:NSError?
+        do {
+            audioPlayer = try AVAudioPlayer(contentsOf: audioUrl)
+        } catch let error as NSError {
+            audioError = error
+            audioPlayer = nil
+        }
+        
+        // エラーが起きたとき
+        if let error = audioError {
+            print("Error \(error.localizedDescription)")
+        }
+        
+        // AVAudioPlayerのデリゲートプロトコル
+        audioPlayer.delegate = self
+        
+        // audioPlayerの再生前に呼び出しておいた方いいもの（ラグを最小化できるらしい）
+        audioPlayer.prepareToPlay()
+        // 再生
+        audioPlayer.play()
         
         // SKViewに型を変換する
         let skView = self.view as! SKView
