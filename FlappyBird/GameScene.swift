@@ -8,8 +8,16 @@
 
 import UIKit
 import SpriteKit
+import AVFoundation
 
-class GameScene: SKScene, SKPhysicsContactDelegate {
+class GameScene: SKScene, SKPhysicsContactDelegate, AVAudioPlayerDelegate {
+    
+    // 効果音を鳴らす用のインスタンス
+    var player1 = player()
+    var player2 = player()
+    var player3 = player()
+    var player4 = player()
+    
     // それぞれのシーン上の画面を構成する要素をノード (SKNodeクラス) と呼ぶ
     // SKNodeクラスを継承したクラスが実際のUI部品
     // 画像を描画するSKSpriteNodeクラス、文字を描画するSKLabelNodeクラス、図形を描画するSKShapeNodeクラス
@@ -17,7 +25,7 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
     var scrollNode:SKNode!
     var wallNode:SKNode!
     var bird:SKSpriteNode!
-    var bugNode:SKNode!
+    var itemNode:SKSpriteNode!
     
     // 衝突判定カテゴリー
     let birdCategory: UInt32 = 1 << 0 // 0...00001
@@ -58,19 +66,22 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         wallNode = SKNode()
         scrollNode.addChild(wallNode)
         
-        // 虫のノード
-        bugNode = SKNode()
-        scrollNode.addChild(bugNode)
-        
+        // アイテムのノード
+        itemNode = SKSpriteNode()
+        scrollNode.addChild(itemNode)
         
         // 各種スプライトを生成する処理をメソッドに分割
         setupGround()
         setupCloud()
         setupWall()
         setupBird()
-        setupBug()
+        setupItem()
         
         setupScoreLabel()
+        
+        // BGMを再生する（リピート）
+        player1.playSoundbackground(name: "backgroundSound")
+
     }
     
     func setupScoreLabel() {
@@ -135,14 +146,21 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
             score += 1
             scoreLabelNode.text = "Score:\(score)"
             
+            // アイテムを表示される状態に戻す
+            itemNode.isHidden = false
+            
             // ベストスコア更新か確認する
             // UserDefaultsはキーと値を指定して保存する
             // 取り出すときはキーを指定する
             var bestScore = userDefaults.integer(forKey: "BEST")
             if score > bestScore {
                 bestScore = score
+                
+                // ベストスコア更新の音
+                player4.playSound(name: "newRecord")
+                
                 bestScoreLabelNode.text = "Best Score:\(bestScore)"
-                // ベストスコアの確認のために、integer(forKey:)メソッドでキーを指定して取得する（ベストスコアが保存されていなければ0が返ってくる）
+                //ベストスコアの確認のために、integer(forKey:)メソッドでキーを指定して取得する（ベストスコアが保存されていなければ0が返ってくる）
                 // 現在のスコアと比較し、ベストスコアが更新されていればset(_:forKey:)メソッドで値とキーを指定して
                 userDefaults.set(bestScore, forKey: "BEST")
                 // 保存する
@@ -150,17 +168,28 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
             }
             
         } else if (contact.bodyA.categoryBitMask & itemCategory) ==  itemCategory || (contact.bodyB.categoryBitMask & itemCategory) == itemCategory {
+            
            // アイテムスコア用の物体と衝突した
-                    print("ItemScoreUp")
-                    itemScore += 1
+            print("ItemScoreUp")
+            itemScore += 1
+            
+            // アイテム取得音がなる
+            player2.playSound(name: "chick")
+            
             // アイテムに衝突した時には、スコアにも点数として1ポイントを追加する
             score += 1
             itemScoreLabelNode.text = "Item Score:\(itemScore)"
             scoreLabelNode.text = "Score:\(score)"
             
+            // アイテムを非表示にする
+            itemNode.isHidden = true
+            
         } else {
             // 壁か地面と衝突した
             print("GameOver")
+            
+            // ぶつかった音が鳴る
+            player3.playSound(name: "hitWall")
 
             // スクロールを停止させる
             scrollNode.speed = 0
@@ -193,11 +222,17 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         
         // 一旦壁を全て取り除く
         wallNode.removeAllChildren()
-        bugNode.removeAllChildren()
+        itemNode.removeAllChildren()
         
         // スクロール、鳥のspeedを1に戻す
         bird.speed = 1
         scrollNode.speed = 1
+        
+        // アイテムを表示される状態に戻す
+        itemNode.isHidden = false
+        
+        // BGMを再生する（リピート）
+        player1.playSoundbackground(name: "backgroundSound")
     }
     
     func setupBird() {
@@ -426,13 +461,14 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         wallNode.run(repeatForeverAnimation)
     }
     
-    func setupBug() {
-        // 虫の画像を読み込む
-        let bugTexture = SKTexture(imageNamed: "bug")
-        bugTexture.filteringMode = .linear
+    func setupItem() {
+        
+        // 虫の画像を2種類読み込む
+        let bugTextureA = SKTexture(imageNamed: "bug_a")
+        bugTextureA.filteringMode = .linear
         
         // 移動する距離を計算
-        let movingDistance = CGFloat(self.frame.size.width + bugTexture.size().width)
+        let movingDistance = CGFloat(self.frame.size.width + bugTextureA.size().width)
         
         // 画面外まで移動するアクションを作成
         let moveBug = SKAction.moveBy(x: -movingDistance, y: 0, duration: 4)
@@ -446,8 +482,9 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         // 鳥の画像サイズを取得
         let birdSize = SKTexture(imageNamed: "bird_a").size()
         
-        // 虫が表示される位置の上下の振れ幅を鳥のサイズの15倍とする
-        let random_y_range = birdSize.height * 15
+        // 虫が表示される位置の上下の振れ幅を鳥のサイズの45倍とする
+        // 大きく振れ幅を設定して上と下にアイテムが表示されても地面で見えなくなるようごまかしている（計算がわからない）
+        let random_y_range = birdSize.height * 45
         
         // 虫のY軸下限位置(中央位置から下方向の最大振れ幅で)を計算
         // 地面の画像を読み込む
@@ -456,7 +493,7 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         let center_y = groundSize.height + (self.frame.size.height - groundSize.height) / 2
         
         // 虫のY軸下限位置
-        let bug_lowest_y = center_y - bugTexture.size().height / 2 - random_y_range / 2
+        let bug_lowest_y = center_y - bugTextureA.size().height / 2 - random_y_range / 2
         
         // 虫を生成するアクションを作成
         let createBugAnimation = SKAction.run({
@@ -465,7 +502,7 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
             
             // 虫関連のノードを乗せるノードを作成
             let bug = SKNode()
-            bug.position = CGPoint(x: self.frame.size.width + bugTexture.size().width / 2, y: 0)
+            bug.position = CGPoint(x: self.frame.size.width + bugTextureA.size().width / 2, y: 0)
             bug.zPosition = -50 // 雲より手前地面より奥
             
             // 0~random_y_rangeまでのランダム値を生成
@@ -474,11 +511,11 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
             let bug_y = bug_lowest_y + random_y
             
             // 表示される虫（スプライト）を作成
-            let bugSprite = SKSpriteNode(texture: bugTexture)
+            let bugSprite = SKSpriteNode(texture: bugTextureA)
             bugSprite.position = CGPoint(x: 0, y: bug_y)
             
             // 虫（スプライト）に物理演算を設定する
-            bugSprite.physicsBody = SKPhysicsBody(circleOfRadius: bugTexture.size().height / 2)
+            bugSprite.physicsBody = SKPhysicsBody(circleOfRadius: bugTextureA.size().height / 2)
             bugSprite.physicsBody?.isDynamic = false
             bugSprite.physicsBody?.categoryBitMask = self.itemCategory
             bugSprite.physicsBody?.contactTestBitMask = self.birdCategory
@@ -487,7 +524,7 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
             
             bug.run(bugAnimation)
             
-            self.bugNode.addChild(bug)
+            self.itemNode.addChild(bug)
         })
         
         // 壁と同じタイミングで虫が作成されないようにするために、1秒間をあける
@@ -498,7 +535,47 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         
         // 虫を作成->時間待ち->虫を作成を無限に繰り返すアクションを作成
         let repeatForeverAnimation = SKAction.repeatForever(SKAction.sequence([waitAnimationOne, createBugAnimation, waitAnimationTwo]))
+        itemNode.run(repeatForeverAnimation)
         
-        bugNode.run(repeatForeverAnimation)
+        
     }
+    
+    // 同時に音楽を再生するために、関数と変数のセットを複数作れるよう、クラスとして定義する
+    class player {
+        var audioPlayer: AVAudioPlayer!
+        func playSound(name: String) {
+            guard let path = Bundle.main.path(forResource: name, ofType: "wav") else {
+                print("音源ファイルが見つかりません")
+                return
+            }
+            do {
+                // AVAudioPlayerのインスタンス化
+                audioPlayer = try AVAudioPlayer(contentsOf: URL(fileURLWithPath: path))
+                // AVAudioPlayerのデリゲートメソッド
+                audioPlayer.delegate = self as? AVAudioPlayerDelegate
+                // 音声の再生
+                audioPlayer.play()
+            } catch {
+            }
+        }
+        
+        func playSoundbackground(name: String) {
+            guard let path = Bundle.main.path(forResource: name, ofType: "wav") else {
+                print("音源ファイルが見つかりません")
+                return
+            }
+            do {
+                // AVAudioPlayerのインスタンス化
+                audioPlayer = try AVAudioPlayer(contentsOf: URL(fileURLWithPath: path))
+                // AVAudioPlayerのデリゲートメソッド
+                audioPlayer.delegate = self as? AVAudioPlayerDelegate
+                // 音声の再生
+                audioPlayer.play()
+                //numberOfLoopsに-1を指定すると無限ループする。
+                audioPlayer.numberOfLoops = -1
+            } catch {
+            }
+        }
+    }
+    
 }
